@@ -37,16 +37,17 @@ jobs:
           }
           printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
 
-      - name: Validar contrato do fixture
-        uses: ./.github/workflows/release-validate.yml
-        with:
-          manifest: fixtures/release.example.yaml
-          fragments: fixtures/fragments
+  validate-fixture:
+    name: Contrato de release do fixture
+    uses: ./.github/workflows/release-validate.yml
+    with:
+      manifest: fixtures/release.example.yaml
+      fragments: fixtures/fragments
 
   dry-deploy:
     name: Deploy seco com adaptador de fixture
     if: github.event_name == 'workflow_dispatch'
-    needs: contract
+    needs: [contract, validate-fixture]
     uses: ./.github/workflows/release-deploy.yml
     with:
       environment: test

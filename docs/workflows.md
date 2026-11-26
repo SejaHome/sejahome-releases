@@ -115,13 +115,16 @@ environment por API.
 Jobs:
 
 - `contract` (push e dispatch): `docker run ... rhysd/actionlint:1.7.7` em todos
-  os workflows e chamada de `release-validate.yml` com
-  `fixtures/release.example.yaml` e `fixtures/fragments`. Falha de download da
-  imagem é falha do job, não `continue-on-error`. O digest do manifesto de
-  fixture é extraído e repassado ao job `dry-deploy`.
-- `dry-deploy` (somente `workflow_dispatch`): chama `release-deploy.yml` com
-  `environment: test`, `fixtures/adapter` e o digest do fixture. O adaptador só
-  escreve `$TMPDIR/test-<version>.marker`; sem rede, Docker de produto ou host.
+  os workflows e extração do digest do manifesto de fixture. Falha de download
+  da imagem é falha do job, não `continue-on-error`.
+- `validate-fixture` (push e dispatch): chama `release-validate.yml` com
+  `fixtures/release.example.yaml` e `fixtures/fragments`. A chamada é um job
+  próprio porque o GitHub só aceita workflow reutilizável em nível de job, nunca
+  em nível de step.
+- `dry-deploy` (somente `workflow_dispatch`): depende de `contract` e
+  `validate-fixture`; chama `release-deploy.yml` com `environment: test`,
+  `fixtures/adapter` e o digest do fixture. O adaptador só escreve
+  `$TMPDIR/test-<version>.marker`; sem rede, Docker de produto ou host.
 - `guard`: falha se `release-deploy.yml` tiver gatilho `push` ou
   `workflow_dispatch`, se `release-validate.yml` declarar `permissions` fora do
   topo ou ampliar `contents: read`, se outro workflow rodar em `push`, ou se
