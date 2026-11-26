@@ -10,7 +10,7 @@
   "scripts": {
     "lint": "tsc --noEmit -p tsconfig.json",
     "test": "tsx --test tests/*.spec.ts",
-    "build": "rm -rf dist && tsc -p tsconfig.build.json && cp -R schemas dist/schemas",
+    "build": "rm -rf -- ./dist && tsc -p tsconfig.build.json && cp -R schemas dist/schemas",
     "cli": "tsx cli/release-platform.ts"
   },
   "dependencies": {
