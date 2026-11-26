@@ -17,10 +17,10 @@ on:
         type: string
         default: ''
       platform-ref:
-        description: Ref de SejaHome/sejahome-releases usada como plataforma.
+        description: Tag estável de SejaHome/sejahome-releases usada como plataforma.
         required: false
         type: string
-        default: dev
+        default: v1
       node-version:
         description: Versão do Node.
         required: false
@@ -129,6 +129,7 @@ jobs:
           const write = (key, value) =>
             appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${value}\n`);
           write('version', manifest.version);
+          write('artifact-name', String(manifest.version).replace('~', '-'));
           write('state', manifest.state);
           write('product', manifest.product);
           write('digests', JSON.stringify(digests));
@@ -199,7 +200,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: release-evidence-${{ steps.scan.outputs.version || 'incompleto' }}
+          name: release-evidence-${{ steps.scan.outputs.artifact-name || 'incompleto' }}
           path: ${{ runner.temp }}/release-evidence
           if-no-files-found: warn
           retention-days: 14

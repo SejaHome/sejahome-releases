@@ -9,6 +9,14 @@ Exemplo de produto só pode aparecer em `docs/`, `fixtures/` e na evidência. Nu
 em `src/`, `cli/` ou `.github/workflows/` — o job `guard` do `self-test.yml`
 verifica isso, sem diferenciar maiúsculas.
 
+## Política de tag da plataforma
+
+O produto fixa a plataforma em `@v1` e nunca em `@dev`. `v1` é tag anotada e
+móvel: só anda em mudança compatível, publicada por commit em `dev`. Mudança
+incompatível abre `v2` e o produto passa a fixar `@v2` quando migrar. Enquanto
+`v1` existir, o padrão de `platform-ref` é `v1`; o push do `self-test` usa
+`github.sha` para não depender da tag.
+
 ## Workflows
 
 ### `release-validate.yml`
@@ -24,7 +32,7 @@ Entradas:
 | `manifest` | sim | — | Caminho do manifesto, relativo ao checkout do chamador. |
 | `fragments` | sim | — | Diretório de fragmentos, relativo ao checkout do chamador. |
 | `based-on` | não | vazio | Manifesto da RC aprovada, relativo ao checkout do chamador. |
-| `platform-ref` | não | `dev` | Ref de `SejaHome/sejahome-releases` usada como plataforma. |
+| `platform-ref` | não | `v1` | Tag estável de `SejaHome/sejahome-releases` usada como plataforma. |
 | `node-version` | não | `22` | Versão do Node. |
 | `latest-version` | não | vazio | Última versão conhecida; quando informada, calcula a próxima RC. |
 
@@ -44,8 +52,10 @@ para diretório temporário; `artifact verify` sem bundle.
 
 Evidência: artefato `release-evidence-<version>` com os cinco arquivos de notas
 (`pt-BR.md`, `en-US.md`, `CHANGELOG.internal.md`, `CHECKLIST.md`,
-`index.public.json`) e `validation.log`. O `$GITHUB_STEP_SUMMARY` mostra versão,
-estado, digests e a lista das notas.
+`index.public.json`) e `validation.log`. No nome do artefato, o `~` da versão
+legada vira `-` (`release-evidence-2026.11.04-rc1`), porque o `~` faz o
+`gh run download` recusar o nome como path traversal. Retenção de 14 dias. O
+`$GITHUB_STEP_SUMMARY` mostra versão, estado, digests e a lista das notas.
 
 Erro de contrato (versão, manifesto, digest, notas) encerra com falha; não existe
 `continue-on-error`. O checkout da plataforma usa as permissões do chamador; esta
@@ -65,17 +75,24 @@ Entradas:
 | --- | --- | --- | --- |
 | `environment` | sim | — | `qa`, `production` ou `test` (só fixture). |
 | `manifest` | sim | — | Caminho do manifesto, relativo ao checkout do chamador. |
+| `version` | sim | — | Versão do release, devolvida pela validação. |
 | `expected-digest` | sim | — | Digest `sha256:` esperado para os artefatos. |
 | `adapter-path` | não | `release/adapter` | Diretório do adaptador, relativo ao checkout do chamador. |
 | `runs-on` | não | `["ubuntu-latest"]` | Runner do job, em JSON, lido por `fromJSON`. |
 | `target-ref` | não | SHA do evento | Ref do chamador a usar no checkout. |
 
 O primeiro passo é a conferência do contrato, antes de qualquer script: ambiente
-entre `qa`, `production` e `test`; `expected-digest` no formato `sha256:` com 64
-hex; manifesto presente; versão no formato do contrato; e **um único** digest
-declarado em `artifacts[].digest`, exatamente igual ao `expected-digest`.
-Divergência falha na primeira etapa. Múltiplos digests ainda não são aceitos
-nesta versão do contrato.
+entre `qa`, `production` e `test`; `version` informada e não vazia;
+`expected-digest` no formato `sha256:` com 64 hex; manifesto presente; e **um
+único** digest declarado em `artifacts[].digest`, exatamente igual ao
+`expected-digest`. Divergência falha na primeira etapa. Múltiplos digests ainda
+não são aceitos nesta versão do contrato.
+
+A versão usada no deploy é sempre a entrada `version`. O `precheck` lê a versão
+declarada no manifesto apenas para comparar; se forem diferentes, registra o
+aviso no summary e segue com a entrada, sem tentar corrigir a versão pelo
+manifesto. O formato da versão é regra de `src/version.ts`, aplicada na
+validação — o deploy não repete esse regex.
 
 Ordem fixa, cada fase com `set -euo pipefail`, `timeout-minutes` próprio e falha
 propagada:
@@ -91,7 +108,7 @@ Variáveis entregues a cada script:
 | Variável | Conteúdo |
 | --- | --- |
 | `RELEASE_ENV` | Ambiente de destino. |
-| `RELEASE_VERSION` | Versão lida do manifesto. |
+| `RELEASE_VERSION` | Versão recebida na entrada `version`. |
 | `RELEASE_DIGEST` | Digest esperado. |
 | `RELEASE_MANIFEST` | Caminho absoluto do manifesto no checkout. |
 | `RELEASE_ACTOR` | Ator do GitHub que disparou o run. |
@@ -118,19 +135,24 @@ Jobs:
   os workflows e extração do digest do manifesto de fixture. Falha de download
   da imagem é falha do job, não `continue-on-error`.
 - `validate-fixture` (push e dispatch): chama `release-validate.yml` com
-  `fixtures/release.example.yaml` e `fixtures/fragments`. A chamada é um job
+  `fixtures/release.example.yaml`, `fixtures/fragments` e
+  `platform-ref: ${{ github.sha }}`; push não depende de tag. A chamada é um job
   próprio porque o GitHub só aceita workflow reutilizável em nível de job, nunca
   em nível de step.
+- `validate-pinned` (somente `workflow_dispatch`): chama `release-validate.yml`
+  com o fixture e **sem** `platform-ref`, provando o padrão `v1`.
 - `dry-deploy` (somente `workflow_dispatch`): depende de `contract` e
   `validate-fixture`; chama `release-deploy.yml` com `environment: test`,
-  `fixtures/adapter` e o digest do fixture. O adaptador só escreve
-  `$TMPDIR/test-<version>.marker`; sem rede, Docker de produto ou host.
+  `fixtures/adapter`, o digest do fixture e `version` vinda da saída de
+  `validate-fixture`. O adaptador só escreve `$TMPDIR/test-<version>.marker`; sem
+  rede, Docker de produto ou host.
 - `guard`: falha se `release-deploy.yml` tiver gatilho `push` ou
   `workflow_dispatch`, se `release-validate.yml` declarar `permissions` fora do
-  topo ou ampliar `contents: read`, se outro workflow rodar em `push`, ou se
-  `src/`, `cli/` ou `.github/workflows/` citarem nome de produto. A lista de
-  nomes fica em `fixtures/product-names.txt`. Marcadores de infraestrutura
-  (`SejaHome`, `sejahome-releases`, labels de runner) são permitidos.
+  topo ou ampliar `contents: read`, se `platform-ref` não tiver padrão `v1`, se
+  outro workflow rodar em `push`, ou se `src/`, `cli/` ou `.github/workflows/`
+  citarem nome de produto. A lista de nomes fica em `fixtures/product-names.txt`.
+  Marcadores de infraestrutura (`SejaHome`, `sejahome-releases`, labels de
+  runner) são permitidos.
 
 O job `guard` não escreve no repositório.
 

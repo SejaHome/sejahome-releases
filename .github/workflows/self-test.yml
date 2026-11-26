@@ -43,6 +43,15 @@ jobs:
     with:
       manifest: fixtures/release.example.yaml
       fragments: fixtures/fragments
+      platform-ref: ${{ github.sha }}
+
+  validate-pinned:
+    name: Contrato de release no padrão v1
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/release-validate.yml
+    with:
+      manifest: fixtures/release.example.yaml
+      fragments: fixtures/fragments
 
   dry-deploy:
     name: Deploy seco com adaptador de fixture
@@ -52,6 +61,7 @@ jobs:
     with:
       environment: test
       manifest: fixtures/release.example.yaml
+      version: ${{ needs.validate-fixture.outputs.version }}
       expected-digest: ${{ needs.contract.outputs.fixture-digest }}
       adapter-path: fixtures/adapter
 
@@ -106,6 +116,20 @@ jobs:
             echo 'release-validate.yml contém contents: write' >&2
             exit 1
           fi
+
+          platform_default=$(awk '
+            /^      platform-ref:[[:space:]]*$/ { inside = 1; next }
+            inside && /^      [a-z0-9_-]+:/ { inside = 0 }
+            inside && /^        default:/ {
+              sub(/^[[:space:]]*default:[[:space:]]*/, "")
+              print
+              exit
+            }
+          ' "$validate" | tr -d "[:space:]'\"")
+          [[ "$platform_default" == 'v1' ]] || {
+            echo "release-validate.yml: platform-ref deve ter padrão v1 (encontrado '${platform_default:-vazio}')" >&2
+            exit 1
+          }
 
           push_files=$(grep -rlE '^  push:' .github/workflows || true)
           push_count=$(printf '%s\n' "$push_files" | sed '/^$/d' | wc -l | tr -d ' ')

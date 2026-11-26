@@ -11,6 +11,10 @@ on:
         description: Caminho do manifesto, relativo ao checkout do chamador.
         required: true
         type: string
+      version:
+        description: Versão do release a publicar, como devolvida pela validação.
+        required: true
+        type: string
       expected-digest:
         description: Digest sha256 esperado para os artefatos do manifesto.
         required: true
@@ -51,6 +55,7 @@ jobs:
         id: precheck
         env:
           RELEASE_ENV: ${{ inputs.environment }}
+          RELEASE_VERSION: ${{ inputs.version }}
           EXPECTED_DIGEST: ${{ inputs.expected-digest }}
           MANIFEST_PATH: ${{ github.workspace }}/${{ inputs.manifest }}
           TARGET_REF: ${{ inputs.target-ref || github.sha }}
@@ -63,18 +68,16 @@ jobs:
               exit 1
               ;;
           esac
+          [[ -n "$RELEASE_VERSION" ]] || {
+            echo 'version ausente: informe a versão devolvida pela validação' >&2
+            exit 1
+          }
           [[ "$EXPECTED_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || {
             echo "expected-digest inválido: use sha256: com 64 hex" >&2
             exit 1
           }
           [[ -f "$MANIFEST_PATH" ]] || {
             echo "manifesto não encontrado: $MANIFEST_PATH" >&2
-            exit 1
-          }
-          version_line=$(grep -m1 -E '^version:' "$MANIFEST_PATH" || true)
-          version=$(printf '%s' "${version_line#version:}" | tr -d "[:space:]'\"")
-          [[ "$version" =~ ^[0-9]{4}\.(0[1-9]|1[0-2])\.(0[1-9]|[1-9][0-9])(~rc[1-9][0-9]*|-rc\.[1-9][0-9]*)?$ ]] || {
-            echo "versão inválida no manifesto: '$version'" >&2
             exit 1
           }
           mapfile -t digests < <(
@@ -88,14 +91,26 @@ jobs:
             echo "digest divergente: manifesto=${digests[0]} esperado=$EXPECTED_DIGEST" >&2
             exit 1
           }
-          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          manifest_version=$(node -e '
+            const { readFileSync } = require("node:fs");
+            const text = readFileSync(process.argv[1], "utf8");
+            const match = /^version:[ \t]*["\x27]?([^"\x27\s#]+)/m.exec(text);
+            process.stdout.write(match ? match[1] : "");
+          ' "$MANIFEST_PATH")
+          version_note=''
+          if [[ -n "$manifest_version" && "$manifest_version" != "$RELEASE_VERSION" ]]; then
+            version_note="- aviso: o manifesto declara \`$manifest_version\`, diferente da versão recebida"
+          fi
           {
             echo '## Deploy de release'
             echo ''
             echo "- ambiente: \`$RELEASE_ENV\`"
-            echo "- versão: \`$version\`"
+            echo "- versão: \`$RELEASE_VERSION\`"
             echo "- digest: \`$EXPECTED_DIGEST\`"
             echo "- ref: \`$TARGET_REF\`"
+            if [[ -n "$version_note" ]]; then
+              echo "$version_note"
+            fi
             echo ''
             echo '### Duração das fases'
             echo ''
@@ -105,7 +120,7 @@ jobs:
         timeout-minutes: 5
         env:
           RELEASE_ENV: ${{ inputs.environment }}
-          RELEASE_VERSION: ${{ steps.precheck.outputs.version }}
+          RELEASE_VERSION: ${{ inputs.version }}
           RELEASE_DIGEST: ${{ inputs.expected-digest }}
           RELEASE_MANIFEST: ${{ github.workspace }}/${{ inputs.manifest }}
           RELEASE_ACTOR: ${{ github.actor }}
@@ -120,7 +135,7 @@ jobs:
         timeout-minutes: 5
         env:
           RELEASE_ENV: ${{ inputs.environment }}
-          RELEASE_VERSION: ${{ steps.precheck.outputs.version }}
+          RELEASE_VERSION: ${{ inputs.version }}
           RELEASE_DIGEST: ${{ inputs.expected-digest }}
           RELEASE_MANIFEST: ${{ github.workspace }}/${{ inputs.manifest }}
           RELEASE_ACTOR: ${{ github.actor }}
@@ -135,7 +150,7 @@ jobs:
         timeout-minutes: 10
         env:
           RELEASE_ENV: ${{ inputs.environment }}
-          RELEASE_VERSION: ${{ steps.precheck.outputs.version }}
+          RELEASE_VERSION: ${{ inputs.version }}
           RELEASE_DIGEST: ${{ inputs.expected-digest }}
           RELEASE_MANIFEST: ${{ github.workspace }}/${{ inputs.manifest }}
           RELEASE_ACTOR: ${{ github.actor }}
@@ -150,7 +165,7 @@ jobs:
         timeout-minutes: 5
         env:
           RELEASE_ENV: ${{ inputs.environment }}
-          RELEASE_VERSION: ${{ steps.precheck.outputs.version }}
+          RELEASE_VERSION: ${{ inputs.version }}
           RELEASE_DIGEST: ${{ inputs.expected-digest }}
           RELEASE_MANIFEST: ${{ github.workspace }}/${{ inputs.manifest }}
           RELEASE_ACTOR: ${{ github.actor }}
