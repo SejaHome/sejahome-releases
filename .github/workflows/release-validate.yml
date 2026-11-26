@@ -80,7 +80,7 @@ jobs:
 
       - name: Instalar plataforma
         working-directory: .release-platform
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-workspace
 
       - name: Validar manifesto
         env:
