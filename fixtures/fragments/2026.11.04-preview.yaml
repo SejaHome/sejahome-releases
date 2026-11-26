@@ -1,0 +1,10 @@
+schema: 1
+category: improvements
+audiences: [customer]
+title:
+  pt-BR: Prévia de publicação mais clara
+  en-US: Clearer publication preview
+text:
+  pt-BR: A prévia mostra exatamente o conteúdo que será publicado, antes da aprovação humana.
+  en-US: The preview shows exactly what will be published, before human approval.
+test: tests/release-notes.spec.ts

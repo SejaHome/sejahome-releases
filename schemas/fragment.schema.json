@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sejahome.local/schemas/fragment-v1.json",
+  "title": "Fragmento de release SejaHome",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["category", "audiences", "title", "text"],
+  "properties": {
+    "schema": { "const": 1 },
+    "category": {
+      "enum": [
+        "highlights",
+        "new",
+        "improvements",
+        "fixes",
+        "security",
+        "breaking",
+        "known-issues",
+        "internal"
+      ]
+    },
+    "audiences": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["customer", "partner", "sejahome", "platform-only"] }
+    },
+    "title": { "$ref": "#/$defs/localizedText" },
+    "text": { "$ref": "#/$defs/localizedText" },
+    "test": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "localizedText": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pt-BR", "en-US"],
+      "properties": {
+        "pt-BR": { "type": "string", "minLength": 1 },
+        "en-US": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

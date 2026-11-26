@@ -1,0 +1,9 @@
+schema: 1
+category: fixes
+audiences: [partner]
+title:
+  pt-BR: Índice público sem conteúdo interno
+  en-US: Public index without internal content
+text:
+  pt-BR: O índice público passa a excluir registros internos e a manter apenas o conteúdo revisado.
+  en-US: The public index now excludes internal records and keeps only reviewed content.

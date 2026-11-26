@@ -1,0 +1,31 @@
+schema: 1
+product: exemplo
+version: 2026.11.04~rc1
+state: draft
+basedOn: 2026.11.03
+publishedAt: 2026-11-25T00:00:00Z
+builtAt: 2026-11-25T00:00:00Z
+commit: '0123456789abcdef0123456789abcdef01234567'
+artifacts:
+  - name: app
+    image: registry.example.local/exemplo/app:2026.11.04-rc1
+    file: sejahome-exemplo.tar
+    digest: sha256:d39fe4fe9135530231f41089b59b2b592a033bbbe89c7bcabde8ecae63af87ec
+compatibility:
+  database: additive
+migrations:
+  required: false
+  summary: Sem migration.
+rollback:
+  mode: image-compatible
+  summary: Reaplicar o digest anterior.
+knownIssues: []
+audiences: [customer, partner]
+actionRequired: false
+publicLinks:
+  - label: Notas públicas
+    url: https://example.com/releases/2026.11.04
+approval:
+  status: pending
+  approvedBy: ''
+  approvedAt: ''

@@ -1,0 +1,10 @@
+schema: 1
+category: internal
+audiences: [platform-only]
+title:
+  pt-BR: Rotina interna de fechamento
+  en-US: Internal release closing routine
+text:
+  pt-BR: A rotina interna confere o manifesto e os digests antes de liberar a publicação.
+  en-US: The internal routine checks the manifest and digests before allowing publication.
+test: tests/manifest.spec.ts

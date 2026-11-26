@@ -1,0 +1,13 @@
+schema: 1
+product: exemplo
+displayName: Produto Exemplo
+versioning:
+  scheme: calendar
+  sequence: monthly
+  rc: legacy
+audiences:
+  - customer
+  - partner
+artifacts:
+  - name: app
+    image: registry.example.local/exemplo/app

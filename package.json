@@ -1,0 +1,28 @@
+{
+  "name": "@sejahome/releases",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Contrato genérico de release da SejaHome: versão, manifesto, notas e estados.",
+  "type": "module",
+  "bin": {
+    "release-platform": "./dist/cli/release-platform.js"
+  },
+  "scripts": {
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test tests/*.spec.ts",
+    "build": "tsc -p tsconfig.build.json && cp -R schemas dist/schemas",
+    "cli": "tsx cli/release-platform.ts"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
