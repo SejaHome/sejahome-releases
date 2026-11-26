@@ -1,0 +1,162 @@
+name: Release deploy
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: Ambiente de destino (qa, production; test só para fixture).
+        required: true
+        type: string
+      manifest:
+        description: Caminho do manifesto, relativo ao checkout do chamador.
+        required: true
+        type: string
+      expected-digest:
+        description: Digest sha256 esperado para os artefatos do manifesto.
+        required: true
+        type: string
+      adapter-path:
+        description: Diretório do adaptador, relativo ao checkout do chamador.
+        required: false
+        type: string
+        default: release/adapter
+      runs-on:
+        description: Runner do job, em JSON.
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
+      target-ref:
+        description: Ref do chamador a usar; vazio usa o SHA do evento.
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.environment }}
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    environment: ${{ inputs.environment }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout do alvo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target-ref || github.sha }}
+          persist-credentials: false
+
+      - name: Conferir ambiente e digest esperado
+        id: precheck
+        env:
+          RELEASE_ENV: ${{ inputs.environment }}
+          EXPECTED_DIGEST: ${{ inputs.expected-digest }}
+          MANIFEST_PATH: ${{ github.workspace }}/${{ inputs.manifest }}
+          TARGET_REF: ${{ inputs.target-ref || github.sha }}
+        run: |
+          set -euo pipefail
+          case "$RELEASE_ENV" in
+            qa|production|test) ;;
+            *)
+              echo "ambiente inválido: $RELEASE_ENV (use qa, production ou test)" >&2
+              exit 1
+              ;;
+          esac
+          [[ "$EXPECTED_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+            echo "expected-digest inválido: use sha256: com 64 hex" >&2
+            exit 1
+          }
+          [[ -f "$MANIFEST_PATH" ]] || {
+            echo "manifesto não encontrado: $MANIFEST_PATH" >&2
+            exit 1
+          }
+          version_line=$(grep -m1 -E '^version:' "$MANIFEST_PATH" || true)
+          version=$(printf '%s' "${version_line#version:}" | tr -d "[:space:]'\"")
+          [[ "$version" =~ ^[0-9]{4}\.(0[1-9]|1[0-2])\.(0[1-9]|[1-9][0-9])(~rc[1-9][0-9]*|-rc\.[1-9][0-9]*)?$ ]] || {
+            echo "versão inválida no manifesto: '$version'" >&2
+            exit 1
+          }
+          mapfile -t digests < <(
+            sed -nE 's/^[[:space:]]+digest:[[:space:]]*(sha256:[0-9a-f]{64})[[:space:]]*$/\1/p' "$MANIFEST_PATH" | sort -u
+          )
+          [[ "${#digests[@]}" -eq 1 ]] || {
+            echo "manifesto deve declarar um único digest; encontrados ${#digests[@]}" >&2
+            exit 1
+          }
+          [[ "${digests[0]}" == "$EXPECTED_DIGEST" ]] || {
+            echo "digest divergente: manifesto=${digests[0]} esperado=$EXPECTED_DIGEST" >&2
+            exit 1
+          }
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          {
+            echo '## Deploy de release'
+            echo ''
+            echo "- ambiente: \`$RELEASE_ENV\`"
+            echo "- versão: \`$version\`"
+            echo "- digest: \`$EXPECTED_DIGEST\`"
+            echo "- ref: \`$TARGET_REF\`"
+            echo ''
+            echo '### Duração das fases'
+            echo ''
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preflight do adaptador
+        timeout-minutes: 5
+        env:
+          RELEASE_ENV: ${{ inputs.environment }}
+          RELEASE_VERSION: ${{ steps.precheck.outputs.version }}
+          RELEASE_DIGEST: ${{ inputs.expected-digest }}
+          RELEASE_MANIFEST: ${{ github.workspace }}/${{ inputs.manifest }}
+          RELEASE_ACTOR: ${{ github.actor }}
+          RELEASE_TARGET_REF: ${{ inputs.target-ref || github.sha }}
+        run: |
+          set -euo pipefail
+          start=$SECONDS
+          bash "${{ inputs.adapter-path }}/preflight.sh"
+          echo "- preflight: $((SECONDS - start))s" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Prepare do adaptador
+        timeout-minutes: 5
+        env:
+          RELEASE_ENV: ${{ inputs.environment }}
+          RELEASE_VERSION: ${{ steps.precheck.outputs.version }}
+          RELEASE_DIGEST: ${{ inputs.expected-digest }}
+          RELEASE_MANIFEST: ${{ github.workspace }}/${{ inputs.manifest }}
+          RELEASE_ACTOR: ${{ github.actor }}
+          RELEASE_TARGET_REF: ${{ inputs.target-ref || github.sha }}
+        run: |
+          set -euo pipefail
+          start=$SECONDS
+          bash "${{ inputs.adapter-path }}/prepare.sh"
+          echo "- prepare: $((SECONDS - start))s" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Deploy do adaptador
+        timeout-minutes: 10
+        env:
+          RELEASE_ENV: ${{ inputs.environment }}
+          RELEASE_VERSION: ${{ steps.precheck.outputs.version }}
+          RELEASE_DIGEST: ${{ inputs.expected-digest }}
+          RELEASE_MANIFEST: ${{ github.workspace }}/${{ inputs.manifest }}
+          RELEASE_ACTOR: ${{ github.actor }}
+          RELEASE_TARGET_REF: ${{ inputs.target-ref || github.sha }}
+        run: |
+          set -euo pipefail
+          start=$SECONDS
+          bash "${{ inputs.adapter-path }}/deploy.sh"
+          echo "- deploy: $((SECONDS - start))s" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify do adaptador
+        timeout-minutes: 5
+        env:
+          RELEASE_ENV: ${{ inputs.environment }}
+          RELEASE_VERSION: ${{ steps.precheck.outputs.version }}
+          RELEASE_DIGEST: ${{ inputs.expected-digest }}
+          RELEASE_MANIFEST: ${{ github.workspace }}/${{ inputs.manifest }}
+          RELEASE_ACTOR: ${{ github.actor }}
+          RELEASE_TARGET_REF: ${{ inputs.target-ref || github.sha }}
+        run: |
+          set -euo pipefail
+          start=$SECONDS
+          bash "${{ inputs.adapter-path }}/verify.sh"
+          echo "- verify: $((SECONDS - start))s" >> "$GITHUB_STEP_SUMMARY"

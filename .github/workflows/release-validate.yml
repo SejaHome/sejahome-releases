@@ -1,0 +1,205 @@
+name: Release validate
+
+on:
+  workflow_call:
+    inputs:
+      manifest:
+        description: Caminho do manifesto, relativo ao checkout do chamador.
+        required: true
+        type: string
+      fragments:
+        description: Diretório de fragmentos, relativo ao checkout do chamador.
+        required: true
+        type: string
+      based-on:
+        description: Manifesto da RC aprovada, relativo ao checkout do chamador.
+        required: false
+        type: string
+        default: ''
+      platform-ref:
+        description: Ref de SejaHome/sejahome-releases usada como plataforma.
+        required: false
+        type: string
+        default: dev
+      node-version:
+        description: Versão do Node.
+        required: false
+        type: string
+        default: '22'
+      latest-version:
+        description: Última versão conhecida; quando informada, calcula a próxima RC.
+        required: false
+        type: string
+        default: ''
+    outputs:
+      version:
+        description: Versão do manifesto validado.
+        value: ${{ jobs.validate.outputs.version }}
+      state:
+        description: Estado do manifesto validado.
+        value: ${{ jobs.validate.outputs.state }}
+      digests:
+        description: JSON com nome e digest de cada artefato.
+        value: ${{ jobs.validate.outputs.digests }}
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Contrato de release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.scan.outputs.version }}
+      state: ${{ steps.scan.outputs.state }}
+      digests: ${{ steps.scan.outputs.digests }}
+    steps:
+      - name: Checkout do chamador
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout da plataforma
+        uses: actions/checkout@v4
+        with:
+          repository: SejaHome/sejahome-releases
+          ref: ${{ inputs.platform-ref }}
+          path: .release-platform
+          persist-credentials: false
+
+      - name: Preparar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Instalar plataforma
+        working-directory: .release-platform
+        run: pnpm install --frozen-lockfile
+
+      - name: Validar manifesto
+        env:
+          EVIDENCE_LOG: ${{ runner.temp }}/release-evidence/validation.log
+          MANIFEST_PATH: ${{ github.workspace }}/${{ inputs.manifest }}
+          BASED_ON_PATH: ${{ inputs.based-on }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$(dirname "$EVIDENCE_LOG")"
+          args=(manifest validate "$MANIFEST_PATH")
+          if [[ -n "$BASED_ON_PATH" ]]; then
+            args+=(--based-on "$GITHUB_WORKSPACE/$BASED_ON_PATH")
+          fi
+          {
+            printf '$ release-platform %s\n' "${args[*]}"
+            .release-platform/node_modules/.bin/tsx .release-platform/cli/release-platform.ts "${args[@]}"
+          } 2>&1 | tee -a "$EVIDENCE_LOG"
+
+      - name: Calcular próxima RC
+        if: inputs.latest-version != ''
+        env:
+          EVIDENCE_LOG: ${{ runner.temp }}/release-evidence/validation.log
+          LATEST_VERSION: ${{ inputs.latest-version }}
+        run: |
+          set -euo pipefail
+          args=(version next --latest "$LATEST_VERSION" --date "$(date -u +%F)")
+          {
+            printf '$ release-platform %s\n' "${args[*]}"
+            .release-platform/node_modules/.bin/tsx .release-platform/cli/release-platform.ts "${args[@]}"
+          } 2>&1 | tee -a "$EVIDENCE_LOG"
+
+      - name: Extrair versão, estado e digests
+        id: scan
+        env:
+          MANIFEST_PATH: ${{ github.workspace }}/${{ inputs.manifest }}
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const { appendFileSync, readFileSync } = require('node:fs');
+          const path = require('node:path');
+          const YAML = require(path.resolve('.release-platform/node_modules/yaml'));
+          const manifest = YAML.parse(readFileSync(process.env.MANIFEST_PATH, 'utf8'));
+          const digests = Object.fromEntries(
+            manifest.artifacts.map((artifact) => [artifact.name, artifact.digest]),
+          );
+          const write = (key, value) =>
+            appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${value}\n`);
+          write('version', manifest.version);
+          write('state', manifest.state);
+          write('product', manifest.product);
+          write('digests', JSON.stringify(digests));
+          NODE
+
+      - name: Gerar notas
+        env:
+          EVIDENCE_LOG: ${{ runner.temp }}/release-evidence/validation.log
+          FRAGMENTS_DIR: ${{ github.workspace }}/${{ inputs.fragments }}
+          NOTES_DIR: ${{ runner.temp }}/notes
+          RELEASE_VERSION: ${{ steps.scan.outputs.version }}
+          RELEASE_PRODUCT: ${{ steps.scan.outputs.product }}
+        run: |
+          set -euo pipefail
+          args=(notes build --fragments "$FRAGMENTS_DIR" --out "$NOTES_DIR" --version "$RELEASE_VERSION" --product "$RELEASE_PRODUCT")
+          {
+            printf '$ release-platform %s\n' "${args[*]}"
+            .release-platform/node_modules/.bin/tsx .release-platform/cli/release-platform.ts "${args[@]}"
+          } 2>&1 | tee -a "$EVIDENCE_LOG"
+
+      - name: Conferir artefatos declarados
+        env:
+          EVIDENCE_LOG: ${{ runner.temp }}/release-evidence/validation.log
+          MANIFEST_PATH: ${{ github.workspace }}/${{ inputs.manifest }}
+        run: |
+          set -euo pipefail
+          args=(artifact verify --manifest "$MANIFEST_PATH")
+          {
+            printf '$ release-platform %s\n' "${args[*]}"
+            .release-platform/node_modules/.bin/tsx .release-platform/cli/release-platform.ts "${args[@]}"
+          } 2>&1 | tee -a "$EVIDENCE_LOG"
+
+      - name: Reunir evidência
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/release-evidence
+          NOTES_DIR: ${{ runner.temp }}/notes
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE_DIR"
+          for name in pt-BR.md en-US.md CHANGELOG.internal.md CHECKLIST.md index.public.json; do
+            cp "$NOTES_DIR/$name" "$EVIDENCE_DIR/$name"
+          done
+
+      - name: Resumo
+        env:
+          RELEASE_VERSION: ${{ steps.scan.outputs.version }}
+          RELEASE_STATE: ${{ steps.scan.outputs.state }}
+          RELEASE_DIGESTS: ${{ steps.scan.outputs.digests }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Contrato de release validado'
+            echo ''
+            echo "- versão: \`$RELEASE_VERSION\`"
+            echo "- estado: \`$RELEASE_STATE\`"
+            echo '- digests:'
+            echo ''
+            echo '```json'
+            echo "$RELEASE_DIGESTS"
+            echo '```'
+            echo '- notas:'
+            for name in pt-BR.md en-US.md CHANGELOG.internal.md CHECKLIST.md index.public.json; do
+              echo "  - \`$name\`"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publicar evidência de validação
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-evidence-${{ steps.scan.outputs.version || 'incompleto' }}
+          path: ${{ runner.temp }}/release-evidence
+          if-no-files-found: warn
+          retention-days: 14

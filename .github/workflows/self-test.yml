@@ -1,0 +1,129 @@
+name: Self-test da camada
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Contrato de release e actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      fixture-digest: ${{ steps.fixture.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: actionlint
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7
+
+      - name: Digest do manifesto de fixture
+        id: fixture
+        run: |
+          set -euo pipefail
+          digest=$(grep -m1 -oE 'sha256:[0-9a-f]{64}' fixtures/release.example.yaml)
+          [[ -n "$digest" ]] || {
+            echo 'digest não encontrado no manifesto de fixture' >&2
+            exit 1
+          }
+          printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Validar contrato do fixture
+        uses: ./.github/workflows/release-validate.yml
+        with:
+          manifest: fixtures/release.example.yaml
+          fragments: fixtures/fragments
+
+  dry-deploy:
+    name: Deploy seco com adaptador de fixture
+    if: github.event_name == 'workflow_dispatch'
+    needs: contract
+    uses: ./.github/workflows/release-deploy.yml
+    with:
+      environment: test
+      manifest: fixtures/release.example.yaml
+      expected-digest: ${{ needs.contract.outputs.fixture-digest }}
+      adapter-path: fixtures/adapter
+
+  guard:
+    name: Guarda de contrato da camada
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verificar gatilhos e permissões
+        run: |
+          set -euo pipefail
+          deploy=.github/workflows/release-deploy.yml
+          validate=.github/workflows/release-validate.yml
+
+          on_block() {
+            awk '
+              /^on:[[:space:]]*$/ { inside = 1; next }
+              inside && /^[^[:space:]#]/ { inside = 0 }
+              inside { print }
+            ' "$1"
+          }
+
+          deploy_on=$(on_block "$deploy")
+          grep -qE '^  workflow_call:' <<<"$deploy_on" || {
+            echo 'release-deploy.yml não declara workflow_call' >&2
+            exit 1
+          }
+          if grep -qE '^  (push|workflow_dispatch):' <<<"$deploy_on"; then
+            echo 'release-deploy.yml tem gatilho de push ou workflow_dispatch' >&2
+            exit 1
+          fi
+
+          [[ "$(grep -cE '^[[:space:]]*permissions:' "$validate")" -eq 1 ]] || {
+            echo 'release-validate.yml deve declarar permissions apenas no topo' >&2
+            exit 1
+          }
+          validate_perms=$(awk '
+            /^permissions:[[:space:]]*$/ { inside = 1; next }
+            inside && /^[^[:space:]#]/ { inside = 0 }
+            inside { print }
+          ' "$validate" | sed -e 's/^[[:space:]]*//' -e '/^$/d')
+          [[ "$validate_perms" == 'contents: read' ]] || {
+            echo "release-validate.yml amplia permissions: '$validate_perms'" >&2
+            exit 1
+          }
+          if grep -q 'contents: write' "$validate"; then
+            echo 'release-validate.yml contém contents: write' >&2
+            exit 1
+          fi
+
+          push_files=$(grep -rlE '^  push:' .github/workflows || true)
+          push_count=$(printf '%s\n' "$push_files" | sed '/^$/d' | wc -l | tr -d ' ')
+          [[ "$push_count" -eq 1 && "$push_files" == '.github/workflows/self-test.yml' ]] || {
+            echo 'self-test.yml deve ser o único workflow com gatilho de push' >&2
+            exit 1
+          }
+
+      - name: Verificar genericidade da camada
+        run: |
+          set -euo pipefail
+          pattern=$(grep -vE '^[[:space:]]*(#|$)' fixtures/product-names.txt | paste -sd'|' -)
+          [[ -n "$pattern" ]] || {
+            echo 'lista de nomes de produto ausente ou vazia' >&2
+            exit 1
+          }
+          if matches=$(grep -riE -- "$pattern" src cli .github/workflows); then
+            echo 'nome de produto encontrado na camada:' >&2
+            echo "$matches" >&2
+            exit 1
+          fi
+          echo 'camada sem nome de produto'

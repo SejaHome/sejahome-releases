@@ -1,0 +1,7 @@
+ayha
+sentinel
+n8n
+homeassistant
+home-assistant
+mosquitto
+zigbee
