@@ -116,7 +116,7 @@ jobs:
           RELEASE_MANIFEST: ${{ github.workspace }}/${{ inputs.manifest }}
           RELEASE_ACTOR: ${{ github.actor }}
           RELEASE_TARGET_REF: ${{ inputs.target-ref || github.sha }}
-          GH_TOKEN: ${{ secrets.release-token }}
+          GH_TOKEN: ${{ secrets.release-token || github.token }}
         run: |
           set -euo pipefail
           start=$SECONDS
@@ -132,7 +132,7 @@ jobs:
           RELEASE_MANIFEST: ${{ github.workspace }}/${{ inputs.manifest }}
           RELEASE_ACTOR: ${{ github.actor }}
           RELEASE_TARGET_REF: ${{ inputs.target-ref || github.sha }}
-          GH_TOKEN: ${{ secrets.release-token }}
+          GH_TOKEN: ${{ secrets.release-token || github.token }}
         run: |
           set -euo pipefail
           start=$SECONDS
@@ -148,7 +148,7 @@ jobs:
           RELEASE_MANIFEST: ${{ github.workspace }}/${{ inputs.manifest }}
           RELEASE_ACTOR: ${{ github.actor }}
           RELEASE_TARGET_REF: ${{ inputs.target-ref || github.sha }}
-          GH_TOKEN: ${{ secrets.release-token }}
+          GH_TOKEN: ${{ secrets.release-token || github.token }}
         run: |
           set -euo pipefail
           start=$SECONDS
@@ -164,7 +164,7 @@ jobs:
           RELEASE_MANIFEST: ${{ github.workspace }}/${{ inputs.manifest }}
           RELEASE_ACTOR: ${{ github.actor }}
           RELEASE_TARGET_REF: ${{ inputs.target-ref || github.sha }}
-          GH_TOKEN: ${{ secrets.release-token }}
+          GH_TOKEN: ${{ secrets.release-token || github.token }}
         run: |
           set -euo pipefail
           start=$SECONDS
