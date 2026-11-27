@@ -2,6 +2,10 @@ name: Release deploy
 
 on:
   workflow_call:
+    secrets:
+      release-token:
+        description: Token de leitura de release passado ao adaptador como GH_TOKEN.
+        required: false
     inputs:
       environment:
         description: Ambiente de destino (qa, production; test só para fixture).
@@ -125,6 +129,7 @@ jobs:
           RELEASE_MANIFEST: ${{ github.workspace }}/${{ inputs.manifest }}
           RELEASE_ACTOR: ${{ github.actor }}
           RELEASE_TARGET_REF: ${{ inputs.target-ref || github.sha }}
+          GH_TOKEN: ${{ secrets.release-token }}
         run: |
           set -euo pipefail
           start=$SECONDS
@@ -140,6 +145,7 @@ jobs:
           RELEASE_MANIFEST: ${{ github.workspace }}/${{ inputs.manifest }}
           RELEASE_ACTOR: ${{ github.actor }}
           RELEASE_TARGET_REF: ${{ inputs.target-ref || github.sha }}
+          GH_TOKEN: ${{ secrets.release-token }}
         run: |
           set -euo pipefail
           start=$SECONDS
@@ -155,6 +161,7 @@ jobs:
           RELEASE_MANIFEST: ${{ github.workspace }}/${{ inputs.manifest }}
           RELEASE_ACTOR: ${{ github.actor }}
           RELEASE_TARGET_REF: ${{ inputs.target-ref || github.sha }}
+          GH_TOKEN: ${{ secrets.release-token }}
         run: |
           set -euo pipefail
           start=$SECONDS
@@ -170,6 +177,7 @@ jobs:
           RELEASE_MANIFEST: ${{ github.workspace }}/${{ inputs.manifest }}
           RELEASE_ACTOR: ${{ github.actor }}
           RELEASE_TARGET_REF: ${{ inputs.target-ref || github.sha }}
+          GH_TOKEN: ${{ secrets.release-token }}
         run: |
           set -euo pipefail
           start=$SECONDS

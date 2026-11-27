@@ -81,6 +81,15 @@ Entradas:
 | `runs-on` | não | `["ubuntu-latest"]` | Runner do job, em JSON, lido por `fromJSON`. |
 | `target-ref` | não | SHA do evento | Ref do chamador a usar no checkout. |
 
+Secret opcional:
+
+| Nome | Papel |
+| --- | --- |
+| `release-token` | Repassado ao adaptador como `GH_TOKEN`, sem aparecer em input. Ausente, a fase recebe `GH_TOKEN` vazio e o adaptador falha com mensagem clara se precisar. |
+
+O chamador fornece o segredo no job que chama este workflow. Nada é gravado em
+log, artifact ou arquivo.
+
 O primeiro passo é a conferência do contrato, antes de qualquer script: ambiente
 entre `qa`, `production` e `test`; `version` informada e não vazia;
 `expected-digest` no formato `sha256:` com 64 hex; manifesto presente; e **um
