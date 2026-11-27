@@ -38,6 +38,11 @@ on:
         required: false
         type: string
         default: ''
+      phase:
+        description: full, prepare ou deploy. Permite agendar janela e promover depois.
+        required: false
+        type: string
+        default: full
 
 permissions:
   contents: read
@@ -76,6 +81,10 @@ jobs:
             echo 'version ausente: informe a versão devolvida pela validação' >&2
             exit 1
           }
+          case "${RELEASE_PHASE:-full}" in
+            full|prepare|deploy) ;;
+            *) echo "phase inválida: $RELEASE_PHASE (use full, prepare ou deploy)" >&2; exit 1 ;;
+          esac
           [[ "$EXPECTED_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || {
             echo "expected-digest inválido: use sha256: com 64 hex" >&2
             exit 1
@@ -116,6 +125,7 @@ jobs:
           RELEASE_MANIFEST: ${{ github.workspace }}/${{ inputs.manifest }}
           RELEASE_ACTOR: ${{ github.actor }}
           RELEASE_TARGET_REF: ${{ inputs.target-ref || github.sha }}
+          RELEASE_PHASE: ${{ inputs.phase }}
           GH_TOKEN: ${{ secrets.release-token || github.token }}
         run: |
           set -euo pipefail
@@ -124,6 +134,7 @@ jobs:
           echo "- preflight: $((SECONDS - start))s" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Prepare do adaptador
+        if: inputs.phase != 'deploy'
         timeout-minutes: 5
         env:
           RELEASE_ENV: ${{ inputs.environment }}
@@ -132,6 +143,7 @@ jobs:
           RELEASE_MANIFEST: ${{ github.workspace }}/${{ inputs.manifest }}
           RELEASE_ACTOR: ${{ github.actor }}
           RELEASE_TARGET_REF: ${{ inputs.target-ref || github.sha }}
+          RELEASE_PHASE: ${{ inputs.phase }}
           GH_TOKEN: ${{ secrets.release-token || github.token }}
         run: |
           set -euo pipefail
@@ -140,6 +152,7 @@ jobs:
           echo "- prepare: $((SECONDS - start))s" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Deploy do adaptador
+        if: inputs.phase != 'prepare'
         timeout-minutes: 10
         env:
           RELEASE_ENV: ${{ inputs.environment }}
@@ -148,6 +161,7 @@ jobs:
           RELEASE_MANIFEST: ${{ github.workspace }}/${{ inputs.manifest }}
           RELEASE_ACTOR: ${{ github.actor }}
           RELEASE_TARGET_REF: ${{ inputs.target-ref || github.sha }}
+          RELEASE_PHASE: ${{ inputs.phase }}
           GH_TOKEN: ${{ secrets.release-token || github.token }}
         run: |
           set -euo pipefail
@@ -156,6 +170,7 @@ jobs:
           echo "- deploy: $((SECONDS - start))s" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify do adaptador
+        if: inputs.phase != 'prepare'
         timeout-minutes: 5
         env:
           RELEASE_ENV: ${{ inputs.environment }}
@@ -164,6 +179,7 @@ jobs:
           RELEASE_MANIFEST: ${{ github.workspace }}/${{ inputs.manifest }}
           RELEASE_ACTOR: ${{ github.actor }}
           RELEASE_TARGET_REF: ${{ inputs.target-ref || github.sha }}
+          RELEASE_PHASE: ${{ inputs.phase }}
           GH_TOKEN: ${{ secrets.release-token || github.token }}
         run: |
           set -euo pipefail

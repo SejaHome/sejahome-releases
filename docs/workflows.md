@@ -80,6 +80,7 @@ Entradas:
 | `adapter-path` | não | `release/adapter` | Diretório do adaptador, relativo ao checkout do chamador. |
 | `runs-on` | não | `["ubuntu-latest"]` | Runner do job, em JSON, lido por `fromJSON`. |
 | `target-ref` | não | SHA do evento | Ref do chamador a usar no checkout. |
+| `phase` | não | `full` | `full`, `prepare` ou `deploy`. Permite agendar a janela e promover depois, em runs separados. |
 
 Secret opcional:
 
