@@ -95,16 +95,6 @@ jobs:
             echo "digest divergente: manifesto=${digests[0]} esperado=$EXPECTED_DIGEST" >&2
             exit 1
           }
-          manifest_version=$(node -e '
-            const { readFileSync } = require("node:fs");
-            const text = readFileSync(process.argv[1], "utf8");
-            const match = /^version:[ \t]*["\x27]?([^"\x27\s#]+)/m.exec(text);
-            process.stdout.write(match ? match[1] : "");
-          ' "$MANIFEST_PATH")
-          version_note=''
-          if [[ -n "$manifest_version" && "$manifest_version" != "$RELEASE_VERSION" ]]; then
-            version_note="- aviso: o manifesto declara \`$manifest_version\`, diferente da versão recebida"
-          fi
           {
             echo '## Deploy de release'
             echo ''
@@ -112,9 +102,6 @@ jobs:
             echo "- versão: \`$RELEASE_VERSION\`"
             echo "- digest: \`$EXPECTED_DIGEST\`"
             echo "- ref: \`$TARGET_REF\`"
-            if [[ -n "$version_note" ]]; then
-              echo "$version_note"
-            fi
             echo ''
             echo '### Duração das fases'
             echo ''
